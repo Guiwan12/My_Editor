@@ -48,13 +48,3 @@ fun formatPrecise(ms: Long): String {
     val cs = (ms % 1000) / 10
     return String.format("%d:%02d.%02d", m, s, cs)
 }
-
-/** Exact time to a tenth of a second, e.g. 0:03.4 — for cut points. */
-fun formatPrecise(ms: Long): String {
-    val totalTenths = (ms + 50) / 100            // round to nearest 0.1s
-    val tenths = totalTenths % 10
-    val totalSec = totalTenths / 10
-    val m = totalSec / 60
-    val s = totalSec % 60
-    return String.format("%d:%02d.%d", m, s, tenths)
-}
