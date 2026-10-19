@@ -30,6 +30,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -43,6 +44,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -171,14 +173,27 @@ fun EditorScreen(vm: EditorViewModel = viewModel()) {
         Column(Modifier.padding(padding).fillMaxSize()) {
 
             val resizeEditing = state.resizeEditorClip
+            val resizeActive = resizeEditing != null
 
-            // Preview. In Resize mode, pinch to zoom and drag to pan; an aspect frame
-            // shows the crop. The transform here is a live approximation of the export.
-            Box(Modifier.fillMaxWidth().height(220.dp).background(Color.Black)) {
-                AndroidView(
-                    factory = { ctx -> PlayerView(ctx) },
-                    update = { it.player = player; it.useController = resizeEditing == null },
-                    modifier = Modifier.fillMaxSize().then(
+            // Preview. The inner frame is the OUTPUT shape: the video fills it (cropped),
+            // the black bars around it change with the chosen aspect, and zoom/pan are
+            // clipped to the frame so nothing bleeds onto the controls.
+            BoxWithConstraints(
+                Modifier.fillMaxWidth().height(220.dp).background(Color.Black).clipToBounds()
+            ) {
+                val aspect = resizeEditing?.aspect ?: AspectOption.ORIGINAL
+                val framed = aspect != AspectOption.ORIGINAL
+                var frameW = maxWidth
+                var frameH = maxHeight
+                if (framed) {
+                    var w = maxWidth
+                    var h = maxWidth / aspect.ratio
+                    if (h > maxHeight) { h = maxHeight; w = maxHeight * aspect.ratio }
+                    frameW = w; frameH = h
+                }
+
+                Box(
+                    Modifier.align(Alignment.Center).size(frameW, frameH).clipToBounds().then(
                         if (resizeEditing != null) Modifier
                             .graphicsLayer {
                                 scaleX = resizeEditing.zoom
@@ -193,10 +208,18 @@ fun EditorScreen(vm: EditorViewModel = viewModel()) {
                                 }
                             }
                         else Modifier
-                    ),
-                )
-                if (resizeEditing != null && resizeEditing.aspect != AspectOption.ORIGINAL) {
-                    AspectFrameOverlay(resizeEditing.aspect.ratio)
+                    )
+                ) {
+                    AndroidView(
+                        factory = { ctx -> PlayerView(ctx) },
+                        update = {
+                            it.player = player
+                            it.useController = !resizeActive
+                            it.resizeMode = if (framed) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            else AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
 
@@ -416,24 +439,6 @@ private fun ResizePanel(
             Spacer(Modifier.width(4.dp))
             Text("Reset")
         }
-    }
-}
-
-/** Draws a centered frame of the given width/height ratio over the preview. */
-@Composable
-private fun AspectFrameOverlay(ratio: Float) {
-    Canvas(Modifier.fillMaxSize()) {
-        var fw = size.width
-        var fh = fw / ratio
-        if (fh > size.height) { fh = size.height; fw = fh * ratio }
-        val left = (size.width - fw) / 2f
-        val top = (size.height - fh) / 2f
-        drawRect(
-            color = Color.White,
-            topLeft = Offset(left, top),
-            size = androidx.compose.ui.geometry.Size(fw, fh),
-            style = Stroke(width = 3f),
-        )
     }
 }
 
