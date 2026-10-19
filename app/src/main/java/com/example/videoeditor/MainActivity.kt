@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -225,30 +226,41 @@ fun EditorScreen(vm: EditorViewModel = viewModel()) {
 
 @Composable
 private fun TrimPanel(clip: Clip, onTrim: (Long, Long) -> Unit, onOpenSpeed: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(
-            "Trim: ${clip.displayName}",
-            style = MaterialTheme.typography.titleSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) {
         if (clip.durationMs > 0) {
             RangeSlider(
                 value = clip.trimStartMs.toFloat()..clip.trimEndMs.toFloat(),
                 onValueChange = { r -> onTrim(r.start.toLong(), r.endInclusive.toLong()) },
                 valueRange = 0f..clip.durationMs.toFloat(),
             )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(formatDuration(clip.trimStartMs), style = MaterialTheme.typography.bodySmall)
-                Text("${formatDuration(clip.trimmedDurationMs)} kept", style = MaterialTheme.typography.bodySmall)
-                Text(formatDuration(clip.trimEndMs), style = MaterialTheme.typography.bodySmall)
+            // Exact cut points + the resulting (shrinking) length, all live.
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    formatPrecise(clip.trimStartMs),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Kept ${formatPrecise(clip.trimmedDurationMs)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    formatPrecise(clip.trimEndMs),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
-        Spacer(Modifier.height(4.dp))
-        OutlinedButton(onClick = onOpenSpeed) {
+        Spacer(Modifier.height(6.dp))
+        TextButton(onClick = onOpenSpeed, contentPadding = PaddingValues(0.dp)) {
             Icon(Icons.Default.Speed, contentDescription = null)
             Spacer(Modifier.width(6.dp))
-            Text(if (clip.hasSpeedChange) "Speed curve (on)" else "Speed curve")
+            Text(if (clip.hasSpeedChange) "Speed curve · on" else "Speed curve")
         }
     }
 }
@@ -265,39 +277,45 @@ private fun ClipRow(
     onRemove: () -> Unit,
 ) {
     val bg = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
-    Row(
-        Modifier.fillMaxWidth().background(bg).padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
+        Modifier.fillMaxWidth().background(bg).clickable { onSelect() }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
-        Box(
-            Modifier.size(width = 64.dp, height = 44.dp).background(Color.DarkGray),
-            contentAlignment = Alignment.Center,
-        ) {
-            val thumb = clip.thumbnail
-            if (thumb != null) Image(bitmap = thumb.asImageBitmap(), contentDescription = null)
-            else Icon(Icons.Default.Movie, contentDescription = null, tint = Color.LightGray)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(width = 56.dp, height = 36.dp).background(Color.DarkGray),
+                contentAlignment = Alignment.Center,
+            ) {
+                val thumb = clip.thumbnail
+                if (thumb != null) Image(bitmap = thumb.asImageBitmap(), contentDescription = null)
+                else Icon(Icons.Default.Movie, contentDescription = null, tint = Color.LightGray)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(clip.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "${formatPrecise(clip.trimmedDurationMs)} / ${formatPrecise(clip.durationMs)}" +
+                        if (clip.hasSpeedChange) " · speed" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onUp, enabled = index > 0) {
+                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up")
+            }
+            IconButton(onClick = onDown, enabled = index < total - 1) {
+                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down")
+            }
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Default.Delete, contentDescription = "Remove")
+            }
         }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text("${index + 1}. ${clip.displayName}", maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                "${formatDuration(clip.trimmedDurationMs)} of ${formatDuration(clip.durationMs)}" +
-                    if (clip.hasSpeedChange) " · speed" else "",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        IconButton(onClick = onUp, enabled = index > 0) {
-            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up")
-        }
-        IconButton(onClick = onDown, enabled = index < total - 1) {
-            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down")
-        }
-        IconButton(onClick = onSelect) {
-            Icon(if (selected) Icons.Default.Edit else Icons.Default.ContentCut, contentDescription = "Select")
-        }
-        IconButton(onClick = onRemove) {
-            Icon(Icons.Default.Delete, contentDescription = "Remove")
-        }
+        // Thin bar: how much of the clip is kept after the cut (shrinks as you trim).
+        val frac = if (clip.durationMs > 0) clip.trimmedDurationMs.toFloat() / clip.durationMs else 1f
+        LinearProgressIndicator(
+            progress = { frac.coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth().height(3.dp).padding(top = 6.dp),
+        )
     }
 }
 
