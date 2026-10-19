@@ -18,6 +18,8 @@ data class Clip(
     val trimEndMs: Long = durationMs,
     val thumbnail: Bitmap? = null,
     val speedCurve: List<SpeedPoint> = DEFAULT_SPEED_CURVE,
+    /** Keep the audio pitch steady when speeding up/slowing down (vs. chipmunk/deep). */
+    val maintainPitch: Boolean = false,
 ) {
     /** Length of this clip after trimming (before speed is applied). */
     val trimmedDurationMs: Long get() = (trimEndMs - trimStartMs).coerceAtLeast(0L)

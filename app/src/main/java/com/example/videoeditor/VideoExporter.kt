@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.MediaItem
+import androidx.media3.common.SpeedParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
@@ -58,7 +59,7 @@ class VideoExporter(private val context: Context) {
             val builder = EditedMediaItem.Builder(mediaItem)
             if (clip.hasSpeedChange && clip.trimmedDurationMs > 0) {
                 val provider = buildSpeedProvider(clip.speedCurve, clip.trimmedDurationMs * 1000)
-                builder.setSpeed(provider)
+                builder.setSpeed(SpeedParameters(provider, clip.maintainPitch))
             }
             builder.build()
         }

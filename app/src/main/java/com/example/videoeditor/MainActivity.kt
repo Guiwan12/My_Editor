@@ -33,9 +33,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlin.math.abs
@@ -85,6 +88,30 @@ fun EditorScreen(vm: EditorViewModel = viewModel()) {
         if (wasPlaying) player.play()
     }
 
+    // Live preview of the speed curve: while playing, set the player's speed to the
+    // curve value at the current position of the current clip (pitch follows the
+    // clip's maintain-pitch setting). ExoPlayer preview speed is capped ~0.1–8x.
+    LaunchedEffect(Unit) {
+        while (true) {
+            val clips = vm.state.value.clips
+            if (player.playbackState == Player.STATE_READY && clips.isNotEmpty()) {
+                val clip = clips.getOrNull(player.currentMediaItemIndex)
+                if (clip != null && clip.hasSpeedChange && clip.trimmedDurationMs > 0) {
+                    val frac = (player.currentPosition.toFloat() / clip.trimmedDurationMs).coerceIn(0f, 1f)
+                    val sp = speedAt(clip.speedCurve, frac).coerceIn(0.1f, 8f)
+                    val pitch = if (clip.maintainPitch) 1f else sp
+                    val cur = player.playbackParameters
+                    if (kotlin.math.abs(cur.speed - sp) > 0.02f || kotlin.math.abs(cur.pitch - pitch) > 0.02f) {
+                        player.playbackParameters = PlaybackParameters(sp, pitch)
+                    }
+                } else if (player.playbackParameters.speed != 1f) {
+                    player.playbackParameters = PlaybackParameters(1f)
+                }
+            }
+            delay(80)
+        }
+    }
+
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(10)
     ) { uris: List<Uri> -> vm.addClips(uris) }
@@ -104,6 +131,7 @@ fun EditorScreen(vm: EditorViewModel = viewModel()) {
         SpeedCurveSheet(
             clip = clip,
             onCurve = { vm.setSpeedCurve(clip.id, it) },
+            onMaintainPitch = { vm.setMaintainPitch(clip.id, it) },
             onClose = vm::closeSpeedEditor,
         )
     }
@@ -294,6 +322,7 @@ private fun ExportProgressDialog(progress: Int, onCancel: () -> Unit) {
 private fun SpeedCurveSheet(
     clip: Clip,
     onCurve: (List<SpeedPoint>) -> Unit,
+    onMaintainPitch: (Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -319,6 +348,12 @@ private fun SpeedCurveSheet(
                 Text("10x", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.TopStart))
                 Text("1x", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterStart))
                 Text("0.1x", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomStart))
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Keep audio pitch (no chipmunk/deep voice)", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Switch(checked = clip.maintainPitch, onCheckedChange = onMaintainPitch)
             }
 
             Spacer(Modifier.height(12.dp))

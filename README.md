@@ -20,8 +20,12 @@ on Android.
   draggable control points (0.1x–10x, log scale). The curve is interpolated with
   a smoothstep in log-speed space and sampled into a Media3 `SpeedProvider`, so
   speed ramps up/down smoothly. Applied on export via `setSpeed(...)`, which
-  ramps audio and video together. (Note: this smooths the *timing*; it does not
-  synthesize in-between frames the way CapCut's Pro "smooth slow-mo" does.)
+  ramps audio and video together. The **preview player honors the curve live**
+  (playback speed follows the curve as it plays), and a **Keep audio pitch**
+  toggle avoids the chipmunk/deep-voice effect (`SpeedParameters`, Media3 1.11).
+  (Note: this smooths the *timing*; it does not synthesize in-between frames the
+  way CapCut's Pro "smooth slow-mo" does — that needs optical-flow frame
+  interpolation, a custom GPU pipeline.)
 - **Preview** the stitched, trimmed result with a real player (ExoPlayer)
 - **Export** everything into a single MP4, with a live progress percentage
 - The export is saved to your **gallery** (Movies/MyVideoEditor, Android 10+)

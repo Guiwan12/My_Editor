@@ -49,8 +49,9 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // Media3: preview (ExoPlayer) and editing/export (Transformer, incl. setSpeed).
-    val media3 = "1.9.0"
+    // Media3: preview (ExoPlayer) and editing/export (Transformer, incl. setSpeed
+    // + SpeedParameters for pitch control, added in 1.11.0).
+    val media3 = "1.11.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-transformer:$media3")
