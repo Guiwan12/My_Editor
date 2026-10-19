@@ -19,6 +19,7 @@ data class EditorState(
     val clips: List<Clip> = emptyList(),
     val selectedId: Long? = null,
     val speedEditorId: Long? = null,   // clip whose speed-curve editor is open
+    val resizeEditorId: Long? = null,  // clip whose resize/crop editor is open
     val exporting: Boolean = false,
     val exportProgress: Int = 0,
     val lastOutput: File? = null,
@@ -26,6 +27,7 @@ data class EditorState(
 ) {
     val selected: Clip? get() = clips.firstOrNull { it.id == selectedId }
     val speedEditorClip: Clip? get() = clips.firstOrNull { it.id == speedEditorId }
+    val resizeEditorClip: Clip? get() = clips.firstOrNull { it.id == resizeEditorId }
     val totalMs: Long get() = clips.sumOf { it.trimmedDurationMs }
 }
 
@@ -138,6 +140,52 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun setFrameBlendAmount(id: Long, amount: Float) {
         val a = amount.coerceIn(0.1f, 0.9f)
         val list = _state.value.clips.map { if (it.id == id) it.copy(frameBlendAmount = a) else it }
+        _state.value = _state.value.copy(clips = list)
+    }
+
+    // --- Resize / crop ---
+
+    fun openResizeEditor(id: Long) { _state.value = _state.value.copy(resizeEditorId = id) }
+    fun closeResizeEditor() { _state.value = _state.value.copy(resizeEditorId = null) }
+
+    fun setAspect(id: Long, aspect: AspectOption) {
+        val list = _state.value.clips.map { if (it.id == id) it.copy(aspect = aspect) else it }
+        _state.value = _state.value.copy(clips = list)
+    }
+
+    /** Apply a pinch gesture: multiply zoom and add a pan delta (in normalized coords). */
+    fun applyPinch(id: Long, zoomFactor: Float, panDx: Float, panDy: Float) {
+        val list = _state.value.clips.map {
+            if (it.id != id) it
+            else {
+                val z = (it.zoom * zoomFactor).coerceIn(1f, 4f)
+                val limit = (1f - 1f / z).coerceAtLeast(0f)
+                it.copy(
+                    zoom = z,
+                    panX = (it.panX + panDx).coerceIn(-limit, limit),
+                    panY = (it.panY + panDy).coerceIn(-limit, limit),
+                )
+            }
+        }
+        _state.value = _state.value.copy(clips = list)
+    }
+
+    fun setZoom(id: Long, zoom: Float) {
+        val list = _state.value.clips.map {
+            if (it.id != id) it
+            else {
+                val z = zoom.coerceIn(1f, 4f)
+                val limit = (1f - 1f / z).coerceAtLeast(0f)
+                it.copy(zoom = z, panX = it.panX.coerceIn(-limit, limit), panY = it.panY.coerceIn(-limit, limit))
+            }
+        }
+        _state.value = _state.value.copy(clips = list)
+    }
+
+    fun resetResize(id: Long) {
+        val list = _state.value.clips.map {
+            if (it.id == id) it.copy(aspect = AspectOption.ORIGINAL, zoom = 1f, panX = 0f, panY = 0f) else it
+        }
         _state.value = _state.value.copy(clips = list)
     }
 

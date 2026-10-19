@@ -8,6 +8,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.SpeedParameters
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.effect.Crop
+import androidx.media3.effect.Presentation
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.EditedMediaItem
@@ -64,8 +66,28 @@ class VideoExporter(private val context: Context) {
                 val provider = buildSpeedProvider(clip.speedCurve, clip.trimmedDurationMs * 1000)
                 builder.setSpeed(SpeedParameters(provider, clip.maintainPitch))
             }
-            if (clip.frameBlend) {
-                val videoEffects: List<Effect> = listOf(FrameBlendEffect(clip.frameBlendAmount))
+            val videoEffects = buildList<Effect> {
+                // Pinch zoom/pan -> crop to a sub-rectangle (in normalized -1..1 coords).
+                if (clip.zoom != 1f || clip.panX != 0f || clip.panY != 0f) {
+                    val half = (1f / clip.zoom).coerceIn(0.05f, 1f)
+                    val limit = 1f - half
+                    val cx = clip.panX.coerceIn(-limit, limit)
+                    val cy = clip.panY.coerceIn(-limit, limit)
+                    add(Crop(cx - half, cx + half, cy - half, cy + half))
+                }
+                // Output aspect ratio (center-crop to fill the new shape).
+                if (clip.aspect != AspectOption.ORIGINAL) {
+                    add(
+                        Presentation.createForAspectRatio(
+                            clip.aspect.ratio,
+                            Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP,
+                        )
+                    )
+                }
+                // Experimental frame blend (applied last, on the cropped frames).
+                if (clip.frameBlend) add(FrameBlendEffect(clip.frameBlendAmount))
+            }
+            if (videoEffects.isNotEmpty()) {
                 builder.setEffects(Effects(emptyList<AudioProcessor>(), videoEffects))
             }
             builder.build()

@@ -24,11 +24,29 @@ data class Clip(
     val frameBlend: Boolean = false,
     /** Blend strength 0..1 (how much of the previous frame to mix in). */
     val frameBlendAmount: Float = 0.5f,
+    /** Output shape. ORIGINAL keeps the source aspect. */
+    val aspect: AspectOption = AspectOption.ORIGINAL,
+    /** Pinch zoom (1x..4x) and pan offset in normalized coords (-1..1). */
+    val zoom: Float = 1f,
+    val panX: Float = 0f,
+    val panY: Float = 0f,
 ) {
+    val hasResize: Boolean
+        get() = aspect != AspectOption.ORIGINAL || zoom != 1f || panX != 0f || panY != 0f
     /** Length of this clip after trimming (before speed is applied). */
     val trimmedDurationMs: Long get() = (trimEndMs - trimStartMs).coerceAtLeast(0L)
 
     val hasSpeedChange: Boolean get() = !speedCurve.isFlat()
+}
+
+/** Output aspect-ratio choices; [ratio] is width/height, 0 = keep original. */
+enum class AspectOption(val label: String, val ratio: Float) {
+    ORIGINAL("Original", 0f),
+    R9_16("9:16", 9f / 16f),
+    R16_9("16:9", 16f / 9f),
+    R1_1("1:1", 1f),
+    R4_3("4:3", 4f / 3f),
+    R2_1("2:1", 2f / 1f),
 }
 
 /** Format milliseconds as m:ss (or h:mm:ss for long clips). */

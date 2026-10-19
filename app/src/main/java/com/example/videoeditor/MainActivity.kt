@@ -13,6 +13,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -29,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -167,15 +170,48 @@ fun EditorScreen(vm: EditorViewModel = viewModel()) {
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
 
-            AndroidView(
-                factory = { ctx -> PlayerView(ctx).apply { this.player = player; useController = true } },
-                modifier = Modifier.fillMaxWidth().height(220.dp).background(Color.Black),
-            )
+            val resizeEditing = state.resizeEditorClip
+
+            // Preview. In Resize mode, pinch to zoom and drag to pan; an aspect frame
+            // shows the crop. The transform here is a live approximation of the export.
+            Box(Modifier.fillMaxWidth().height(220.dp).background(Color.Black)) {
+                AndroidView(
+                    factory = { ctx -> PlayerView(ctx) },
+                    update = { it.player = player; it.useController = resizeEditing == null },
+                    modifier = Modifier.fillMaxSize().then(
+                        if (resizeEditing != null) Modifier
+                            .graphicsLayer {
+                                scaleX = resizeEditing.zoom
+                                scaleY = resizeEditing.zoom
+                                translationX = resizeEditing.panX * size.width / 2f
+                                translationY = resizeEditing.panY * size.height / 2f
+                            }
+                            .pointerInput(resizeEditing.id) {
+                                detectTransformGestures { _, pan, gestureZoom, _ ->
+                                    val w = size.width.toFloat(); val h = size.height.toFloat()
+                                    vm.applyPinch(resizeEditing.id, gestureZoom, pan.x / (w / 2f), pan.y / (h / 2f))
+                                }
+                            }
+                        else Modifier
+                    ),
+                )
+                if (resizeEditing != null && resizeEditing.aspect != AspectOption.ORIGINAL) {
+                    AspectFrameOverlay(resizeEditing.aspect.ratio)
+                }
+            }
 
             val speedEditing = state.speedEditorClip
-            if (speedEditing != null) {
-                // Inline panel: the preview above stays fully visible and live while you adjust.
-                SpeedCurvePanel(
+            when {
+                resizeEditing != null -> ResizePanel(
+                    clip = resizeEditing,
+                    onAspect = { vm.setAspect(resizeEditing.id, it) },
+                    onZoom = { vm.setZoom(resizeEditing.id, it) },
+                    onReset = { vm.resetResize(resizeEditing.id) },
+                    onClose = vm::closeResizeEditor,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+
+                speedEditing != null -> SpeedCurvePanel(
                     clip = speedEditing,
                     onCurve = { vm.setSpeedCurve(speedEditing.id, it) },
                     onMaintainPitch = { vm.setMaintainPitch(speedEditing.id, it) },
@@ -184,43 +220,45 @@ fun EditorScreen(vm: EditorViewModel = viewModel()) {
                     onClose = vm::closeSpeedEditor,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
-            } else {
-                state.selected?.let { clip ->
-                    val clipIndex = state.clips.indexOfFirst { it.id == clip.id }
-                    TrimPanel(
-                        clip = clip,
-                        onTrim = { s, e ->
-                            // Seek the preview to the handle being moved, so you see the exact cut frame.
-                            val movedStart = s != clip.trimStartMs
-                            vm.setTrim(clip.id, s, e)
-                            if (clipIndex >= 0) {
-                                player.pause()
-                                player.seekTo(clipIndex, if (movedStart) s else e)
-                            }
-                        },
-                        onOpenSpeed = { vm.openSpeedEditor(clip.id) },
-                    )
-                    HorizontalDivider()
-                }
 
-                if (state.clips.isEmpty()) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Tap + to add videos", style = MaterialTheme.typography.bodyLarge)
+                else -> {
+                    state.selected?.let { clip ->
+                        val clipIndex = state.clips.indexOfFirst { it.id == clip.id }
+                        TrimPanel(
+                            clip = clip,
+                            onTrim = { s, e ->
+                                val movedStart = s != clip.trimStartMs
+                                vm.setTrim(clip.id, s, e)
+                                if (clipIndex >= 0) {
+                                    player.pause()
+                                    player.seekTo(clipIndex, if (movedStart) s else e)
+                                }
+                            },
+                            onOpenSpeed = { vm.openSpeedEditor(clip.id) },
+                            onOpenResize = { vm.openResizeEditor(clip.id) },
+                        )
+                        HorizontalDivider()
                     }
-                } else {
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        itemsIndexed(state.clips, key = { _, clip -> clip.id }) { index, clip ->
-                            ClipRow(
-                                index = index,
-                                total = state.clips.size,
-                                clip = clip,
-                                selected = clip.id == state.selectedId,
-                                onSelect = { vm.select(clip.id) },
-                                onUp = { vm.move(clip.id, up = true) },
-                                onDown = { vm.move(clip.id, up = false) },
-                                onRemove = { vm.remove(clip.id) },
-                            )
-                            HorizontalDivider()
+
+                    if (state.clips.isEmpty()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("Tap + to add videos", style = MaterialTheme.typography.bodyLarge)
+                        }
+                    } else {
+                        LazyColumn(Modifier.fillMaxSize()) {
+                            itemsIndexed(state.clips, key = { _, clip -> clip.id }) { index, clip ->
+                                ClipRow(
+                                    index = index,
+                                    total = state.clips.size,
+                                    clip = clip,
+                                    selected = clip.id == state.selectedId,
+                                    onSelect = { vm.select(clip.id) },
+                                    onUp = { vm.move(clip.id, up = true) },
+                                    onDown = { vm.move(clip.id, up = false) },
+                                    onRemove = { vm.remove(clip.id) },
+                                )
+                                HorizontalDivider()
+                            }
                         }
                     }
                 }
@@ -230,7 +268,7 @@ fun EditorScreen(vm: EditorViewModel = viewModel()) {
 }
 
 @Composable
-private fun TrimPanel(clip: Clip, onTrim: (Long, Long) -> Unit, onOpenSpeed: () -> Unit) {
+private fun TrimPanel(clip: Clip, onTrim: (Long, Long) -> Unit, onOpenSpeed: () -> Unit, onOpenResize: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) {
         if (clip.durationMs > 0) {
             RangeSlider(
@@ -262,10 +300,18 @@ private fun TrimPanel(clip: Clip, onTrim: (Long, Long) -> Unit, onOpenSpeed: () 
             }
         }
         Spacer(Modifier.height(6.dp))
-        TextButton(onClick = onOpenSpeed, contentPadding = PaddingValues(0.dp)) {
-            Icon(Icons.Default.Speed, contentDescription = null)
-            Spacer(Modifier.width(6.dp))
-            Text(if (clip.hasSpeedChange) "Speed curve · on" else "Speed curve")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onOpenSpeed, contentPadding = PaddingValues(0.dp)) {
+                Icon(Icons.Default.Speed, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(if (clip.hasSpeedChange) "Speed · on" else "Speed")
+            }
+            Spacer(Modifier.width(16.dp))
+            TextButton(onClick = onOpenResize, contentPadding = PaddingValues(0.dp)) {
+                Icon(Icons.Default.Crop, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(if (clip.hasResize) "Resize · on" else "Resize")
+            }
         }
     }
 }
@@ -320,6 +366,73 @@ private fun ClipRow(
         LinearProgressIndicator(
             progress = { frac.coerceIn(0f, 1f) },
             modifier = Modifier.fillMaxWidth().height(3.dp).padding(top = 6.dp),
+        )
+    }
+}
+
+@Composable
+private fun ResizePanel(
+    clip: Clip,
+    onAspect: (AspectOption) -> Unit,
+    onZoom: (Float) -> Unit,
+    onReset: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Resize", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Pick a shape · pinch to zoom · drag to pan",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = onClose) { Text("Done") }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            AspectOption.entries.forEach { opt ->
+                FilterChip(
+                    selected = clip.aspect == opt,
+                    onClick = { onAspect(opt) },
+                    label = { Text(opt.label) },
+                )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Text("Zoom: ${String.format("%.1fx", clip.zoom)}", style = MaterialTheme.typography.labelSmall)
+        Slider(value = clip.zoom, onValueChange = onZoom, valueRange = 1f..4f)
+
+        TextButton(onClick = onReset, contentPadding = PaddingValues(0.dp)) {
+            Icon(Icons.Default.Refresh, contentDescription = null)
+            Spacer(Modifier.width(4.dp))
+            Text("Reset")
+        }
+    }
+}
+
+/** Draws a centered frame of the given width/height ratio over the preview. */
+@Composable
+private fun AspectFrameOverlay(ratio: Float) {
+    Canvas(Modifier.fillMaxSize()) {
+        var fw = size.width
+        var fh = fw / ratio
+        if (fh > size.height) { fh = size.height; fw = fh * ratio }
+        val left = (size.width - fw) / 2f
+        val top = (size.height - fh) / 2f
+        drawRect(
+            color = Color.White,
+            topLeft = Offset(left, top),
+            size = androidx.compose.ui.geometry.Size(fw, fh),
+            style = Stroke(width = 3f),
         )
     }
 }
