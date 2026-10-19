@@ -71,34 +71,25 @@ fun EditorScreen(vm: EditorViewModel = viewModel()) {
     val player = remember { ExoPlayer.Builder(context).build() }
     DisposableEffect(Unit) { onDispose { player.release() } }
 
-    LaunchedEffect(state.clips) {
-        val items = state.clips.map { clip ->
-            MediaItem.Builder()
-                .setUri(clip.uri)
-                .setClippingConfiguration(
-                    MediaItem.ClippingConfiguration.Builder()
-                        .setStartPositionMs(clip.trimStartMs)
-                        .setEndPositionMs(clip.trimEndMs)
-                        .build()
-                )
-                .build()
-        }
-        val wasPlaying = player.isPlaying
-        player.setMediaItems(items)
+    // Preview loads the FULL source clips (not pre-trimmed) and only reloads when the
+    // set/order/sources change — NOT on every trim. That lets us seek to any exact
+    // frame while scrubbing the trim handles, and stops the playlist from thrashing.
+    val structureKey = state.clips.joinToString(",") { "${it.id}:${it.uri}" }
+    LaunchedEffect(structureKey) {
+        player.setMediaItems(state.clips.map { MediaItem.fromUri(it.uri) })
         player.prepare()
-        if (wasPlaying) player.play()
     }
 
-    // Live preview of the speed curve: while playing, set the player's speed to the
-    // curve value at the current position of the current clip (pitch follows the
-    // clip's maintain-pitch setting). ExoPlayer preview speed is capped ~0.1–8x.
+    // Live preview of the speed curve while PLAYING: set the player's speed to the
+    // curve value at the current position within the clip's kept (trimmed) region.
     LaunchedEffect(Unit) {
         while (true) {
             val clips = vm.state.value.clips
-            if (player.playbackState == Player.STATE_READY && clips.isNotEmpty()) {
+            if (player.isPlaying && clips.isNotEmpty()) {
                 val clip = clips.getOrNull(player.currentMediaItemIndex)
                 if (clip != null && clip.hasSpeedChange && clip.trimmedDurationMs > 0) {
-                    val frac = (player.currentPosition.toFloat() / clip.trimmedDurationMs).coerceIn(0f, 1f)
+                    val rel = (player.currentPosition - clip.trimStartMs).toFloat()
+                    val frac = (rel / clip.trimmedDurationMs).coerceIn(0f, 1f)
                     val sp = speedAt(clip.speedCurve, frac).coerceIn(0.1f, 8f)
                     val pitch = if (clip.maintainPitch) 1f else sp
                     val cur = player.playbackParameters
@@ -191,9 +182,18 @@ fun EditorScreen(vm: EditorViewModel = viewModel()) {
             )
 
             state.selected?.let { clip ->
+                val clipIndex = state.clips.indexOfFirst { it.id == clip.id }
                 TrimPanel(
                     clip = clip,
-                    onTrim = { s, e -> vm.setTrim(clip.id, s, e) },
+                    onTrim = { s, e ->
+                        // Seek the preview to the handle being moved, so you see the exact cut frame.
+                        val movedStart = s != clip.trimStartMs
+                        vm.setTrim(clip.id, s, e)
+                        if (clipIndex >= 0) {
+                            player.pause()
+                            player.seekTo(clipIndex, if (movedStart) s else e)
+                        }
+                    },
                     onOpenSpeed = { vm.openSpeedEditor(clip.id) },
                 )
                 HorizontalDivider()
