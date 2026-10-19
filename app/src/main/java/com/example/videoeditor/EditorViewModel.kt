@@ -135,6 +135,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(clips = list)
     }
 
+    fun setFrameBlendAmount(id: Long, amount: Float) {
+        val a = amount.coerceIn(0.1f, 0.9f)
+        val list = _state.value.clips.map { if (it.id == id) it.copy(frameBlendAmount = a) else it }
+        _state.value = _state.value.copy(clips = list)
+    }
+
     fun clearMessage() { _state.value = _state.value.copy(message = null) }
 
     fun export() {

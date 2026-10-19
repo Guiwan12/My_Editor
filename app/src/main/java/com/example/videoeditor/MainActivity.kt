@@ -133,6 +133,7 @@ fun EditorScreen(vm: EditorViewModel = viewModel()) {
             onCurve = { vm.setSpeedCurve(clip.id, it) },
             onMaintainPitch = { vm.setMaintainPitch(clip.id, it) },
             onFrameBlend = { vm.setFrameBlend(clip.id, it) },
+            onFrameBlendAmount = { vm.setFrameBlendAmount(clip.id, it) },
             onClose = vm::closeSpeedEditor,
         )
     }
@@ -325,6 +326,7 @@ private fun SpeedCurveSheet(
     onCurve: (List<SpeedPoint>) -> Unit,
     onMaintainPitch: (Boolean) -> Unit,
     onFrameBlend: (Boolean) -> Unit,
+    onFrameBlendAmount: (Float) -> Unit,
     onClose: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -370,6 +372,17 @@ private fun SpeedCurveSheet(
                     Text("Softens slow-mo stutter; may ghost on fast motion", style = MaterialTheme.typography.labelSmall)
                 }
                 Switch(checked = clip.frameBlend, onCheckedChange = onFrameBlend)
+            }
+            if (clip.frameBlend) {
+                Text(
+                    "Blend strength: ${(clip.frameBlendAmount * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                Slider(
+                    value = clip.frameBlendAmount,
+                    onValueChange = onFrameBlendAmount,
+                    valueRange = 0.1f..0.9f,
+                )
             }
 
             Spacer(Modifier.height(12.dp))

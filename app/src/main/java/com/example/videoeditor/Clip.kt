@@ -22,6 +22,8 @@ data class Clip(
     val maintainPitch: Boolean = false,
     /** EXPERIMENTAL: GPU frame blending to soften slow-motion stutter. */
     val frameBlend: Boolean = false,
+    /** Blend strength 0..1 (how much of the previous frame to mix in). */
+    val frameBlendAmount: Float = 0.5f,
 ) {
     /** Length of this clip after trimming (before speed is applied). */
     val trimmedDurationMs: Long get() = (trimEndMs - trimStartMs).coerceAtLeast(0L)

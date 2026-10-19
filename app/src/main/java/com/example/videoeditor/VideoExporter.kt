@@ -65,7 +65,7 @@ class VideoExporter(private val context: Context) {
                 builder.setSpeed(SpeedParameters(provider, clip.maintainPitch))
             }
             if (clip.frameBlend) {
-                val videoEffects: List<Effect> = listOf(FrameBlendEffect(0.5f))
+                val videoEffects: List<Effect> = listOf(FrameBlendEffect(clip.frameBlendAmount))
                 builder.setEffects(Effects(emptyList<AudioProcessor>(), videoEffects))
             }
             builder.build()

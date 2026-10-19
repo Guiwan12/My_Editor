@@ -117,35 +117,36 @@ private class FrameBlendShaderProgram(
     }
 
     private companion object {
-        const val VERTEX_SHADER = """
-            attribute vec4 aFramePosition;
-            varying vec2 vTexCoord;
-            void main() {
-              gl_Position = aFramePosition;
-              vTexCoord = aFramePosition.xy * 0.5 + 0.5;
-            }
-        """
+        // #version must be the very first characters; matches Media3's own shaders.
+        const val VERTEX_SHADER =
+            "#version 100\n" +
+                "attribute vec4 aFramePosition;\n" +
+                "varying vec2 vTexCoord;\n" +
+                "void main() {\n" +
+                "  gl_Position = aFramePosition;\n" +
+                "  vTexCoord = aFramePosition.xy * 0.5 + 0.5;\n" +
+                "}\n"
 
-        const val BLEND_FRAGMENT_SHADER = """
-            precision mediump float;
-            uniform sampler2D uTexSampler0;
-            uniform sampler2D uTexSampler1;
-            uniform float uBlend;
-            varying vec2 vTexCoord;
-            void main() {
-              vec4 c0 = texture2D(uTexSampler0, vTexCoord);
-              vec4 c1 = texture2D(uTexSampler1, vTexCoord);
-              gl_FragColor = mix(c0, c1, uBlend);
-            }
-        """
+        const val BLEND_FRAGMENT_SHADER =
+            "#version 100\n" +
+                "precision mediump float;\n" +
+                "uniform sampler2D uTexSampler0;\n" +
+                "uniform sampler2D uTexSampler1;\n" +
+                "uniform float uBlend;\n" +
+                "varying vec2 vTexCoord;\n" +
+                "void main() {\n" +
+                "  vec4 c0 = texture2D(uTexSampler0, vTexCoord);\n" +
+                "  vec4 c1 = texture2D(uTexSampler1, vTexCoord);\n" +
+                "  gl_FragColor = mix(c0, c1, uBlend);\n" +
+                "}\n"
 
-        const val COPY_FRAGMENT_SHADER = """
-            precision mediump float;
-            uniform sampler2D uTexSampler;
-            varying vec2 vTexCoord;
-            void main() {
-              gl_FragColor = texture2D(uTexSampler, vTexCoord);
-            }
-        """
+        const val COPY_FRAGMENT_SHADER =
+            "#version 100\n" +
+                "precision mediump float;\n" +
+                "uniform sampler2D uTexSampler;\n" +
+                "varying vec2 vTexCoord;\n" +
+                "void main() {\n" +
+                "  gl_FragColor = texture2D(uTexSampler, vTexCoord);\n" +
+                "}\n"
     }
 }
