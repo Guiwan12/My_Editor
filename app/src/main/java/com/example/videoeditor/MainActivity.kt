@@ -132,6 +132,7 @@ fun EditorScreen(vm: EditorViewModel = viewModel()) {
             clip = clip,
             onCurve = { vm.setSpeedCurve(clip.id, it) },
             onMaintainPitch = { vm.setMaintainPitch(clip.id, it) },
+            onFrameBlend = { vm.setFrameBlend(clip.id, it) },
             onClose = vm::closeSpeedEditor,
         )
     }
@@ -323,6 +324,7 @@ private fun SpeedCurveSheet(
     clip: Clip,
     onCurve: (List<SpeedPoint>) -> Unit,
     onMaintainPitch: (Boolean) -> Unit,
+    onFrameBlend: (Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -354,6 +356,15 @@ private fun SpeedCurveSheet(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Keep audio pitch (no chipmunk/deep voice)", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 Switch(checked = clip.maintainPitch, onCheckedChange = onMaintainPitch)
+            }
+
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Frame blend (experimental)", style = MaterialTheme.typography.bodyMedium)
+                    Text("Softens slow-mo stutter; may ghost on fast motion", style = MaterialTheme.typography.labelSmall)
+                }
+                Switch(checked = clip.frameBlend, onCheckedChange = onFrameBlend)
             }
 
             Spacer(Modifier.height(12.dp))

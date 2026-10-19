@@ -3,10 +3,13 @@ package com.example.videoeditor
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
+import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.SpeedParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.transformer.Composition
+import androidx.media3.transformer.Effects
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.ExportException
@@ -60,6 +63,10 @@ class VideoExporter(private val context: Context) {
             if (clip.hasSpeedChange && clip.trimmedDurationMs > 0) {
                 val provider = buildSpeedProvider(clip.speedCurve, clip.trimmedDurationMs * 1000)
                 builder.setSpeed(SpeedParameters(provider, clip.maintainPitch))
+            }
+            if (clip.frameBlend) {
+                val videoEffects: List<Effect> = listOf(FrameBlendEffect(0.5f))
+                builder.setEffects(Effects(emptyList<AudioProcessor>(), videoEffects))
             }
             builder.build()
         }

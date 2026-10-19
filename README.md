@@ -26,6 +26,10 @@ on Android.
   (Note: this smooths the *timing*; it does not synthesize in-between frames the
   way CapCut's Pro "smooth slow-mo" does — that needs optical-flow frame
   interpolation, a custom GPU pipeline.)
+- **Frame blend (experimental, off by default)**: a custom Media3 `GlEffect`
+  (`FrameBlendEffect`) that cross-fades each frame with the previous one on the
+  GPU to soften slow-mo stutter. It's a cheap blend, not optical flow, so fast
+  motion will ghost. Toggle it per clip in the speed editor.
 - **Preview** the stitched, trimmed result with a real player (ExoPlayer)
 - **Export** everything into a single MP4, with a live progress percentage
 - The export is saved to your **gallery** (Movies/MyVideoEditor, Android 10+)
