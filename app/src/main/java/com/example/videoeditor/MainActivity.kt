@@ -346,7 +346,12 @@ private fun SpeedCurveSheet(
             Spacer(Modifier.height(12.dp))
 
             Box(Modifier.fillMaxWidth().height(240.dp)) {
-                SpeedCurveEditor(points = points, onChange = ::update, modifier = Modifier.fillMaxSize())
+                SpeedCurveEditor(
+                    points = points,
+                    onLiveChange = { points = it },      // smooth local update while dragging
+                    onCommit = { onCurve(points) },        // persist to the clip on release
+                    modifier = Modifier.fillMaxSize(),
+                )
                 Text("10x", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.TopStart))
                 Text("1x", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterStart))
                 Text("0.1x", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomStart))
@@ -385,34 +390,48 @@ private fun SpeedCurveSheet(
 @Composable
 private fun SpeedCurveEditor(
     points: List<SpeedPoint>,
-    onChange: (List<SpeedPoint>) -> Unit,
+    onLiveChange: (List<SpeedPoint>) -> Unit,
+    onCommit: (List<SpeedPoint>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Live snapshot so the gesture handlers (started once) always see current data.
+    val current by rememberUpdatedState(points)
     var activeIndex by remember { mutableStateOf(-1) }
     val grid = Color(0xFF444444)
-    val hitPx = 70f
+    val hitPx = 80f
 
     Canvas(
         modifier
             .background(Color(0xFF1C1C1C))
-            .pointerInput(points) {
+            // Stable key (Unit): the detector is NOT torn down when points change,
+            // so a drag runs continuously instead of flicking once per move.
+            .pointerInput(Unit) {
                 detectDragGestures(
-                    onDragStart = { pos -> activeIndex = nearestIndex(points, pos, size.width.toFloat(), size.height.toFloat(), hitPx) },
-                    onDragEnd = { activeIndex = -1 },
-                    onDragCancel = { activeIndex = -1 },
+                    onDragStart = { pos ->
+                        val w = size.width.toFloat(); val h = size.height.toFloat()
+                        activeIndex = nearestIndex(current, pos, w, h, hitPx)
+                    },
+                    onDragEnd = { activeIndex = -1; onCommit(current) },
+                    onDragCancel = { activeIndex = -1; onCommit(current) },
                     onDrag = { change, _ ->
                         change.consume()
                         val i = activeIndex
-                        if (i in points.indices) {
-                            onChange(movePoint(points, i, change.position, size.width.toFloat(), size.height.toFloat()))
+                        if (i in current.indices) {
+                            onLiveChange(movePoint(current, i, change.position, size.width.toFloat(), size.height.toFloat()))
                         }
                     },
                 )
             }
-            .pointerInput(points) {
+            .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = { pos -> onChange(addPoint(points, pos, size.width.toFloat(), size.height.toFloat(), hitPx)) },
-                    onDoubleTap = { pos -> onChange(removePoint(points, pos, size.width.toFloat(), size.height.toFloat(), hitPx)) },
+                    onTap = { pos ->
+                        val np = addPoint(current, pos, size.width.toFloat(), size.height.toFloat(), hitPx)
+                        if (np !== current) { onLiveChange(np); onCommit(np) }
+                    },
+                    onDoubleTap = { pos ->
+                        val np = removePoint(current, pos, size.width.toFloat(), size.height.toFloat(), hitPx)
+                        if (np !== current) { onLiveChange(np); onCommit(np) }
+                    },
                 )
             }
     ) {
