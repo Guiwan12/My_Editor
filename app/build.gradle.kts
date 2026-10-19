@@ -6,12 +6,12 @@ plugins {
 
 android {
     namespace = "com.example.videoeditor"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.videoeditor"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
     }
@@ -49,8 +49,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // Media3: preview (ExoPlayer + PlayerView) and editing/export (Transformer).
-    val media3 = "1.4.1"
+    // Media3: preview (ExoPlayer) and editing/export (Transformer, incl. setSpeed).
+    val media3 = "1.9.0"
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-transformer:$media3")

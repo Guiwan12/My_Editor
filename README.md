@@ -16,6 +16,12 @@ on Android.
 - A **timeline** of clips you can **reorder** (up/down) and **remove**
 - **Trim** each clip with an in/out range slider (non-destructive — the source
   file is never changed)
+- **Speed curve** per clip (CapCut-style): a graph of speed vs. time with
+  draggable control points (0.1x–10x, log scale). The curve is interpolated with
+  a smoothstep in log-speed space and sampled into a Media3 `SpeedProvider`, so
+  speed ramps up/down smoothly. Applied on export via `setSpeed(...)`, which
+  ramps audio and video together. (Note: this smooths the *timing*; it does not
+  synthesize in-between frames the way CapCut's Pro "smooth slow-mo" does.)
 - **Preview** the stitched, trimmed result with a real player (ExoPlayer)
 - **Export** everything into a single MP4, with a live progress percentage
 - The export is saved to your **gallery** (Movies/MyVideoEditor, Android 10+)

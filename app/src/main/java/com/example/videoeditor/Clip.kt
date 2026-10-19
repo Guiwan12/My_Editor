@@ -4,10 +4,10 @@ import android.graphics.Bitmap
 import android.net.Uri
 
 /**
- * One clip on the timeline: a source video plus the in/out trim points the user
- * set. The source file is never modified — trimming just records where this clip
- * should start and end, and the exporter applies it (non-destructive editing,
- * the same idea CapCut's engine uses, just far simpler).
+ * One clip on the timeline: a source video plus the in/out trim points and the
+ * speed curve the user set. The source file is never modified — trimming and
+ * speed just record how this clip should play, and the exporter applies them
+ * (non-destructive editing, the same idea CapCut's engine uses, far simpler).
  */
 data class Clip(
     val id: Long,
@@ -17,9 +17,12 @@ data class Clip(
     val trimStartMs: Long = 0L,
     val trimEndMs: Long = durationMs,
     val thumbnail: Bitmap? = null,
+    val speedCurve: List<SpeedPoint> = DEFAULT_SPEED_CURVE,
 ) {
-    /** Length of this clip after trimming. */
+    /** Length of this clip after trimming (before speed is applied). */
     val trimmedDurationMs: Long get() = (trimEndMs - trimStartMs).coerceAtLeast(0L)
+
+    val hasSpeedChange: Boolean get() = !speedCurve.isFlat()
 }
 
 /** Format milliseconds as m:ss (or h:mm:ss for long clips). */

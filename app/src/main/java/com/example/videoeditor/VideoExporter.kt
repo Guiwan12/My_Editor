@@ -15,15 +15,14 @@ import androidx.media3.transformer.Transformer
 import java.io.File
 
 /**
- * Turns the timeline (a list of trimmed clips, in order) into a single exported
- * MP4 using Media3 Transformer.
+ * Turns the timeline (a list of trimmed, speed-ramped clips, in order) into a
+ * single exported MP4 using Media3 Transformer.
  *
- * How it maps to the editor idea:
- *   - each clip's trim becomes a MediaItem.ClippingConfiguration (in/out points)
- *   - each becomes an EditedMediaItem
+ *   - each clip's trim becomes a MediaItem.ClippingConfiguration
+ *   - each clip's speed curve becomes a SpeedProvider via setSpeed(...), which
+ *     ramps audio AND video timestamps together
  *   - the ordered list becomes one EditedMediaItemSequence -> Composition
- *   - Transformer concatenates and transcodes them into one output file,
- *     re-encoding only as needed to make the clips line up.
+ *   - Transformer concatenates + transcodes them into one output file.
  *
  * Must be created and driven on the main thread (Transformer needs a Looper).
  */
@@ -56,8 +55,12 @@ class VideoExporter(private val context: Context) {
                         .build()
                 )
                 .build()
-            // removeAudio = false keeps each clip's audio; flip if you want silent output.
-            EditedMediaItem.Builder(mediaItem).build()
+            val builder = EditedMediaItem.Builder(mediaItem)
+            if (clip.hasSpeedChange && clip.trimmedDurationMs > 0) {
+                val provider = buildSpeedProvider(clip.speedCurve, clip.trimmedDurationMs * 1000)
+                builder.setSpeed(provider)
+            }
+            builder.build()
         }
 
         val sequence = EditedMediaItemSequence(editedItems)

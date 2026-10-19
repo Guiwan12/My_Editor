@@ -17,13 +17,15 @@ import java.io.File
 
 data class EditorState(
     val clips: List<Clip> = emptyList(),
-    val selectedId: Long? = null,       // clip whose trim controls are shown
+    val selectedId: Long? = null,
+    val speedEditorId: Long? = null,   // clip whose speed-curve editor is open
     val exporting: Boolean = false,
-    val exportProgress: Int = 0,        // 0..100
-    val lastOutput: File? = null,       // last successful export
+    val exportProgress: Int = 0,
+    val lastOutput: File? = null,
     val message: String? = null,
 ) {
     val selected: Clip? get() = clips.firstOrNull { it.id == selectedId }
+    val speedEditorClip: Clip? get() = clips.firstOrNull { it.id == speedEditorId }
     val totalMs: Long get() = clips.sumOf { it.trimmedDurationMs }
 }
 
@@ -36,13 +38,10 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(EditorState())
     val state: StateFlow<EditorState> = _state.asStateFlow()
 
-    /** Add videos chosen from the picker; reads duration + a thumbnail off-thread. */
     fun addClips(uris: List<Uri>) {
         if (uris.isEmpty()) return
         viewModelScope.launch {
-            val newClips = withContext(Dispatchers.IO) {
-                uris.mapNotNull { uri -> buildClip(uri) }
-            }
+            val newClips = withContext(Dispatchers.IO) { uris.mapNotNull { buildClip(it) } }
             val combined = _state.value.clips + newClips
             _state.value = _state.value.copy(
                 clips = combined,
@@ -99,21 +98,32 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(clips = list)
     }
 
-    /** Update the trim window of a clip (values in ms, clamped and kept ordered). */
     fun setTrim(id: Long, startMs: Long, endMs: Long) {
         val list = _state.value.clips.map { clip ->
             if (clip.id != id) clip
             else {
                 val s = startMs.coerceIn(0L, clip.durationMs)
                 val e = endMs.coerceIn(0L, clip.durationMs)
-                clip.copy(
-                    trimStartMs = s.coerceAtMost(e),
-                    trimEndMs = e.coerceAtLeast(s),
-                )
+                clip.copy(trimStartMs = s.coerceAtMost(e), trimEndMs = e.coerceAtLeast(s))
             }
         }
         _state.value = _state.value.copy(clips = list)
     }
+
+    // --- Speed curve ---
+
+    fun openSpeedEditor(id: Long) { _state.value = _state.value.copy(speedEditorId = id) }
+    fun closeSpeedEditor() { _state.value = _state.value.copy(speedEditorId = null) }
+
+    fun setSpeedCurve(id: Long, curve: List<SpeedPoint>) {
+        val cleaned = curve
+            .map { SpeedPoint(it.t.coerceIn(0f, 1f), it.speed.coerceIn(MIN_SPEED, MAX_SPEED)) }
+            .sortedBy { it.t }
+        val list = _state.value.clips.map { if (it.id == id) it.copy(speedCurve = cleaned) else it }
+        _state.value = _state.value.copy(clips = list)
+    }
+
+    fun resetSpeedCurve(id: Long) = setSpeedCurve(id, DEFAULT_SPEED_CURVE)
 
     fun clearMessage() { _state.value = _state.value.copy(message = null) }
 
@@ -125,13 +135,11 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }
         val outFile = File(Output.outputDir(getApplication()), "export_${System.currentTimeMillis()}.mp4")
         _state.value = _state.value.copy(exporting = true, exportProgress = 0)
-        // Transformer must run on the main thread.
         exporter.export(
             clips = clips,
             outputFile = outFile,
             onProgress = { p -> _state.value = _state.value.copy(exportProgress = p) },
             onDone = { file ->
-                // Publish to the gallery off the main thread, then report.
                 viewModelScope.launch {
                     val savedToGallery = withContext(Dispatchers.IO) {
                         runCatching { Output.saveToGallery(getApplication(), file) != null }.getOrDefault(false)
