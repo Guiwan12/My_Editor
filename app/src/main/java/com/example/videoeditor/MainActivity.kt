@@ -16,6 +16,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -119,17 +121,6 @@ fun EditorScreen(vm: EditorViewModel = viewModel()) {
         ExportProgressDialog(progress = state.exportProgress, onCancel = vm::cancelExport)
     }
 
-    state.speedEditorClip?.let { clip ->
-        SpeedCurveSheet(
-            clip = clip,
-            onCurve = { vm.setSpeedCurve(clip.id, it) },
-            onMaintainPitch = { vm.setMaintainPitch(clip.id, it) },
-            onFrameBlend = { vm.setFrameBlend(clip.id, it) },
-            onFrameBlendAmount = { vm.setFrameBlendAmount(clip.id, it) },
-            onClose = vm::closeSpeedEditor,
-        )
-    }
-
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
@@ -181,42 +172,56 @@ fun EditorScreen(vm: EditorViewModel = viewModel()) {
                 modifier = Modifier.fillMaxWidth().height(220.dp).background(Color.Black),
             )
 
-            state.selected?.let { clip ->
-                val clipIndex = state.clips.indexOfFirst { it.id == clip.id }
-                TrimPanel(
-                    clip = clip,
-                    onTrim = { s, e ->
-                        // Seek the preview to the handle being moved, so you see the exact cut frame.
-                        val movedStart = s != clip.trimStartMs
-                        vm.setTrim(clip.id, s, e)
-                        if (clipIndex >= 0) {
-                            player.pause()
-                            player.seekTo(clipIndex, if (movedStart) s else e)
-                        }
-                    },
-                    onOpenSpeed = { vm.openSpeedEditor(clip.id) },
+            val speedEditing = state.speedEditorClip
+            if (speedEditing != null) {
+                // Inline panel: the preview above stays fully visible and live while you adjust.
+                SpeedCurvePanel(
+                    clip = speedEditing,
+                    onCurve = { vm.setSpeedCurve(speedEditing.id, it) },
+                    onMaintainPitch = { vm.setMaintainPitch(speedEditing.id, it) },
+                    onFrameBlend = { vm.setFrameBlend(speedEditing.id, it) },
+                    onFrameBlendAmount = { vm.setFrameBlendAmount(speedEditing.id, it) },
+                    onClose = vm::closeSpeedEditor,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
-                HorizontalDivider()
-            }
-
-            if (state.clips.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Tap + to add videos", style = MaterialTheme.typography.bodyLarge)
-                }
             } else {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    itemsIndexed(state.clips, key = { _, clip -> clip.id }) { index, clip ->
-                        ClipRow(
-                            index = index,
-                            total = state.clips.size,
-                            clip = clip,
-                            selected = clip.id == state.selectedId,
-                            onSelect = { vm.select(clip.id) },
-                            onUp = { vm.move(clip.id, up = true) },
-                            onDown = { vm.move(clip.id, up = false) },
-                            onRemove = { vm.remove(clip.id) },
-                        )
-                        HorizontalDivider()
+                state.selected?.let { clip ->
+                    val clipIndex = state.clips.indexOfFirst { it.id == clip.id }
+                    TrimPanel(
+                        clip = clip,
+                        onTrim = { s, e ->
+                            // Seek the preview to the handle being moved, so you see the exact cut frame.
+                            val movedStart = s != clip.trimStartMs
+                            vm.setTrim(clip.id, s, e)
+                            if (clipIndex >= 0) {
+                                player.pause()
+                                player.seekTo(clipIndex, if (movedStart) s else e)
+                            }
+                        },
+                        onOpenSpeed = { vm.openSpeedEditor(clip.id) },
+                    )
+                    HorizontalDivider()
+                }
+
+                if (state.clips.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Tap + to add videos", style = MaterialTheme.typography.bodyLarge)
+                    }
+                } else {
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        itemsIndexed(state.clips, key = { _, clip -> clip.id }) { index, clip ->
+                            ClipRow(
+                                index = index,
+                                total = state.clips.size,
+                                clip = clip,
+                                selected = clip.id == state.selectedId,
+                                onSelect = { vm.select(clip.id) },
+                                onUp = { vm.move(clip.id, up = true) },
+                                onDown = { vm.move(clip.id, up = false) },
+                                onRemove = { vm.remove(clip.id) },
+                            )
+                            HorizontalDivider()
+                        }
                     }
                 }
             }
@@ -337,82 +342,86 @@ private fun ExportProgressDialog(progress: Int, onCancel: () -> Unit) {
 
 // ---------------- Speed curve editor ----------------
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SpeedCurveSheet(
+private fun SpeedCurvePanel(
     clip: Clip,
     onCurve: (List<SpeedPoint>) -> Unit,
     onMaintainPitch: (Boolean) -> Unit,
     onFrameBlend: (Boolean) -> Unit,
     onFrameBlendAmount: (Float) -> Unit,
     onClose: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var points by remember(clip.id) { mutableStateOf(clip.speedCurve) }
-
     fun update(newPoints: List<SpeedPoint>) {
         points = newPoints
         onCurve(newPoints)
     }
 
-    ModalBottomSheet(onDismissRequest = onClose, sheetState = sheetState) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
-            Text("Speed curve — ${clip.displayName}", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(2.dp))
-            Text(
-                "Output ≈ ${formatDuration(estimatedOutputMs(points, clip.trimmedDurationMs))}  ·  drag dots, tap to add, double-tap to remove",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Spacer(Modifier.height(12.dp))
-
-            Box(Modifier.fillMaxWidth().height(240.dp)) {
-                SpeedCurveEditor(
-                    points = points,
-                    onLiveChange = { points = it },      // smooth local update while dragging
-                    onCommit = { onCurve(points) },        // persist to the clip on release
-                    modifier = Modifier.fillMaxSize(),
-                )
-                Text("10x", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.TopStart))
-                Text("1x", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterStart))
-                Text("0.1x", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomStart))
-            }
-
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Keep audio pitch (no chipmunk/deep voice)", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                Switch(checked = clip.maintainPitch, onCheckedChange = onMaintainPitch)
-            }
-
-            Spacer(Modifier.height(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Frame blend (experimental)", style = MaterialTheme.typography.bodyMedium)
-                    Text("Softens slow-mo stutter; may ghost on fast motion", style = MaterialTheme.typography.labelSmall)
-                }
-                Switch(checked = clip.frameBlend, onCheckedChange = onFrameBlend)
-            }
-            if (clip.frameBlend) {
+    Column(
+        modifier
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Speed curve", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Blend strength: ${(clip.frameBlendAmount * 100).toInt()}%",
-                    style = MaterialTheme.typography.labelSmall,
-                )
-                Slider(
-                    value = clip.frameBlendAmount,
-                    onValueChange = onFrameBlendAmount,
-                    valueRange = 0.1f..0.9f,
+                    "Output ≈ ${formatDuration(estimatedOutputMs(points, clip.trimmedDurationMs))} · drag dots, tap to add, double-tap to remove",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = onClose) { Text("Done") }
+        }
 
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { update(DEFAULT_SPEED_CURVE) }) {
-                    Icon(Icons.Default.Refresh, contentDescription = null); Spacer(Modifier.width(4.dp)); Text("Reset")
-                }
-                TextButton(onClick = { update(SLOWMO_PRESET) }) {
-                    Icon(Icons.Default.SlowMotionVideo, contentDescription = null); Spacer(Modifier.width(4.dp)); Text("Slow-mo")
-                }
-                Spacer(Modifier.weight(1f))
-                Button(onClick = onClose) { Text("Done") }
+        Spacer(Modifier.height(10.dp))
+        Box(Modifier.fillMaxWidth().height(190.dp)) {
+            SpeedCurveEditor(
+                points = points,
+                onLiveChange = { points = it },
+                onCommit = { onCurve(points) },
+                modifier = Modifier.fillMaxSize(),
+            )
+            Text("10x", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.TopStart))
+            Text("1x", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterStart))
+            Text("0.1x", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomStart))
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Keep audio pitch (no chipmunk/deep voice)", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Switch(checked = clip.maintainPitch, onCheckedChange = onMaintainPitch)
+        }
+
+        Spacer(Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Frame blend (experimental)", style = MaterialTheme.typography.bodyMedium)
+                Text("Softens slow-mo stutter; may ghost on fast motion", style = MaterialTheme.typography.labelSmall)
+            }
+            Switch(checked = clip.frameBlend, onCheckedChange = onFrameBlend)
+        }
+        if (clip.frameBlend) {
+            Text(
+                "Blend strength: ${(clip.frameBlendAmount * 100).toInt()}%",
+                style = MaterialTheme.typography.labelSmall,
+            )
+            Slider(
+                value = clip.frameBlendAmount,
+                onValueChange = onFrameBlendAmount,
+                valueRange = 0.1f..0.9f,
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { update(DEFAULT_SPEED_CURVE) }) {
+                Icon(Icons.Default.Refresh, contentDescription = null); Spacer(Modifier.width(4.dp)); Text("Reset")
+            }
+            TextButton(onClick = { update(SLOWMO_PRESET) }) {
+                Icon(Icons.Default.SlowMotionVideo, contentDescription = null); Spacer(Modifier.width(4.dp)); Text("Slow-mo")
             }
         }
     }
